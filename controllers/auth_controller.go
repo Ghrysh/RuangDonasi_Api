@@ -173,3 +173,75 @@ func GoogleLogin(c *gin.Context) {
 		},
 	})
 }
+
+type ForgotPasswordInput struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordInput struct {
+	Token                   string `json:"token" binding:"required"`
+	NewPassword             string `json:"new_password" binding:"required,min=8"`
+	NewPasswordConfirmation string `json:"new_password_confirmation" binding:"required,min=8"`
+}
+
+func ForgotPassword(c *gin.Context) {
+	var input ForgotPasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format email tidak valid"})
+		return
+	}
+
+	var user models.User
+	if err := config.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Alamat email tidak terdaftar di sistem kami"})
+		return
+	}
+
+	resetToken, err := utils.GenerateResetToken(user.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat token reset"})
+		return
+	}
+
+	if err := utils.SendResetPasswordEmail(user.Email, resetToken); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengirim email. Pastikan konfigurasi SMTP benar."})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tautan reset kata sandi telah dikirim ke email Anda"})
+}
+
+func ResetPassword(c *gin.Context) {
+	var input ResetPasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Permintaan tidak lengkap"})
+		return
+	}
+
+	if input.NewPassword != input.NewPasswordConfirmation {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Kata sandi dan konfirmasi tidak cocok!"})
+		return
+	}
+
+	email, err := utils.VerifyResetToken(input.Token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tautan tidak valid atau sudah kedaluwarsa"})
+		return
+	}
+
+	var user models.User
+	if err := config.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pengguna tidak ditemukan"})
+		return
+	}
+
+	hashedPassword, _ := utils.HashPassword(input.NewPassword)
+	user.Password = &hashedPassword
+
+	if err := config.DB.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui kata sandi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Kata sandi berhasil diperbarui. Silakan login kembali."})
+}
