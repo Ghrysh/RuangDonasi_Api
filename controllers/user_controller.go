@@ -205,6 +205,8 @@ func UpdateUserRole(c *gin.Context) {
 func DeleteUser(c *gin.Context) {
 	targetUserID := c.Param("id")
 
+	config.DB.Where("user_id = ?", targetUserID).Delete(&models.Transaction{})
+
 	if err := config.DB.Delete(&models.User{}, targetUserID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus pengguna"})
 		return

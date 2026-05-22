@@ -43,7 +43,6 @@ func CreateDirectTransaction(c *gin.Context) {
 	var totalAmount float64
 
 	for {
-		rand.Seed(time.Now().UnixNano())
 		uniqueCode = rand.Intn(900) + 100
 		totalAmount = input.Amount + float64(uniqueCode)
 
